@@ -37,7 +37,7 @@ public class RegisterResource {
 	private static final String USER_ROLE = "user_role";
 	private static final String USER_ACCOUNT_STATE = "user_account_state";
 	
-	private static final String REGISTER_ROLE = "enduser";
+	private static final String REGISTER_ROLE = "ENDUSER";
 	private static final String REGISTER_STATE = "DESATIVADA";
 
 	private static final String USER_CITIZEN_CARD = "user_citizen_card";
