@@ -64,6 +64,10 @@ public class LoginResource {
 	public LoginResource() {
 
 	}
+	
+	
+	
+	//APAGAR ABAIXO, NO FIM POIS É DADO PELOS STORES
 
 	@POST
 	@Path("/")
@@ -75,9 +79,7 @@ public class LoginResource {
 			AuthToken at = new AuthToken(data.username);
 			return Response.ok(g.toJson(at)).build();
 		}
-		return Response.status(Status.FORBIDDEN)
-				.entity(MESSAGE_INVALID_CREDENTIALS)
-				.build();
+		return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_CREDENTIALS).build();
 	}
 
 	@GET
@@ -108,15 +110,11 @@ public class LoginResource {
 				return Response.ok(g.toJson(token)).build();
 			} else {
 				LOG.warning(LOG_MESSAGE_WRONG_PASSWORD + data.username);
-				return Response.status(Status.FORBIDDEN)
-						.entity(MESSAGE_INVALID_CREDENTIALS)
-						.build();
+				return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_CREDENTIALS).build();
 			}
 		} else {
 			LOG.warning(LOG_MESSAGE_UNKNOW_USER + data.username);
-			return Response.status(Status.FORBIDDEN)
-					.entity(MESSAGE_INVALID_CREDENTIALS)
-					.build();
+			return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_CREDENTIALS).build();
 		}
 	}
 
@@ -133,24 +131,18 @@ public class LoginResource {
 		if (user != null) {
 			String hashedPWD = (String) user.getString(USER_PWD);
 			if (hashedPWD.equals(DigestUtils.sha512Hex(data.password))) {
-				user = Entity.newBuilder(user)
-						.set("user_login_time", Timestamp.now())
-						.build();
+				user = Entity.newBuilder(user).set(USER_LOGIN_TIME, Timestamp.now()).build();
 				datastore.update(user);
 				LOG.info(LOG_MESSAGE_LOGIN_SUCCESSFUL + data.username);
 				AuthToken token = new AuthToken(data.username);
 				return Response.ok(g.toJson(token)).build();
 			} else {
 				LOG.warning(LOG_MESSAGE_WRONG_PASSWORD + data.username);
-				return Response.status(Status.FORBIDDEN)
-						.entity(MESSAGE_INVALID_CREDENTIALS)
-						.build();
+				return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_CREDENTIALS).build();
 			}
 		} else {
 			LOG.warning(LOG_MESSAGE_UNKNOW_USER + data.username);
-			return Response.status(Status.FORBIDDEN)
-					.entity(MESSAGE_INVALID_CREDENTIALS)
-					.build();
+			return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_CREDENTIALS).build();
 		}
 	}
 
@@ -167,28 +159,21 @@ public class LoginResource {
 		if (user != null) {
 			String hashedPWD = user.getString(USER_PWD);
 			if (hashedPWD.equals(DigestUtils.sha512Hex(data.password))) {
-				KeyFactory logKeyFactory = datastore.newKeyFactory()
-						.addAncestor(PathElement.of("User", data.username))
+				KeyFactory logKeyFactory = datastore.newKeyFactory().addAncestor(PathElement.of("User", data.username))
 						.setKind("UserLog");
 				Key logKey = datastore.allocateId(logKeyFactory.newKey());
-				Entity userLog = Entity.newBuilder(logKey)
-						.set("user_login_time", Timestamp.now())
-						.build();
+				Entity userLog = Entity.newBuilder(logKey).set("user_login_time", Timestamp.now()).build();
 				datastore.put(userLog);
 				LOG.info(LOG_MESSAGE_LOGIN_SUCCESSFUL + data.username);
 				AuthToken token = new AuthToken(data.username);
 				return Response.ok(g.toJson(token)).build();
 			} else {
 				LOG.warning(LOG_MESSAGE_WRONG_PASSWORD + data.username);
-				return Response.status(Status.FORBIDDEN)
-						.entity(MESSAGE_INVALID_CREDENTIALS)
-						.build();
+				return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_CREDENTIALS).build();
 			}
 		} else {
 			LOG.warning(LOG_MESSAGE_UNKNOW_USER + data.username);
-			return Response.status(Status.FORBIDDEN)
-					.entity(MESSAGE_INVALID_CREDENTIALS)
-					.build();
+			return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_CREDENTIALS).build();
 		}
 	}
 
@@ -196,21 +181,15 @@ public class LoginResource {
 	@Path("/v2")
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Produces(MediaType.APPLICATION_JSON)
-	public Response doLoginV2(LoginData data,
-			@Context HttpServletRequest request,
-			@Context HttpHeaders headers) {
+	public Response doLoginV2(LoginData data, @Context HttpServletRequest request, @Context HttpHeaders headers) {
 		LOG.fine(LOG_MESSAGE_LOGIN_ATTEMP + data.username);
 
 		Key userKey = userKeyFactory.newKey(data.username);
-		Key ctrsKey = datastore.newKeyFactory()
-				.addAncestors(PathElement.of("User", data.username))
-				.setKind("UserStats")
+		Key ctrsKey = datastore.newKeyFactory().addAncestors(PathElement.of("User", data.username)).setKind("UserStats")
 				.newKey("counters");
 		// Generate automatically a key
-		Key logKey = datastore.allocateId(
-				datastore.newKeyFactory()
-						.addAncestors(PathElement.of("User", data.username))
-						.setKind("UserLog").newKey());
+		Key logKey = datastore.allocateId(datastore.newKeyFactory().addAncestors(PathElement.of("User", data.username))
+				.setKind("UserLog").newKey());
 
 		Transaction txn = datastore.newTransaction();
 		try {
@@ -218,20 +197,14 @@ public class LoginResource {
 			if (user == null) {
 				// Username does not exist
 				LOG.warning(LOG_MESSAGE_LOGIN_ATTEMP + data.username);
-				return Response.status(Status.FORBIDDEN)
-						.entity(MESSAGE_INVALID_CREDENTIALS)
-						.build();
+				return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_CREDENTIALS).build();
 			}
 
 			// We get the user stats from the storage
 			Entity stats = txn.get(ctrsKey);
 			if (stats == null) {
-				stats = Entity.newBuilder(ctrsKey)
-						.set("user_stats_logins", 0L)
-						.set("user_stats_failed", 0L)
-						.set("user_first_login", Timestamp.now())
-						.set("user_last_login", Timestamp.now())
-						.build();
+				stats = Entity.newBuilder(ctrsKey).set("user_stats_logins", 0L).set("user_stats_failed", 0L)
+						.set("user_first_login", Timestamp.now()).set("user_last_login", Timestamp.now()).build();
 			}
 
 			String hashedPWD = (String) user.getString(USER_PWD);
@@ -239,26 +212,23 @@ public class LoginResource {
 				// Login successful
 				// Construct the logs
 				String cityLatLong = headers.getHeaderString("X-AppEngine-CityLatLong");
-				Entity log = Entity.newBuilder(logKey)
-						.set("user_login_ip", request.getRemoteAddr())
+				Entity log = Entity.newBuilder(logKey).set("user_login_ip", request.getRemoteAddr())
 						.set("user_login_host", request.getRemoteHost())
-						.set("user_login_latlon", cityLatLong != null
-								? StringValue.newBuilder(cityLatLong).setExcludeFromIndexes(true).build()
-								: StringValue.newBuilder("").setExcludeFromIndexes(true).build())
+						.set("user_login_latlon",
+								cityLatLong != null
+										? StringValue.newBuilder(cityLatLong).setExcludeFromIndexes(true).build()
+										: StringValue.newBuilder("").setExcludeFromIndexes(true).build())
 						.set("user_login_city", headers.getHeaderString("X-AppEngine-City"))
 						.set("user_login_country", headers.getHeaderString("X-AppEngine-Country"))
-						.set("user_login_time", Timestamp.now())
-						.build();
+						.set("user_login_time", Timestamp.now()).build();
 
 				// Get the user statistics and updates it
 				// Copying information every time a user logins may not be a good solution
 				// (why?)
 				Entity ustats = Entity.newBuilder(ctrsKey)
-						.set("user_stats_logins", stats.getLong("user_stats_logins") + 1)
-						.set("user_stats_failed", 0L)
+						.set("user_stats_logins", stats.getLong("user_stats_logins") + 1).set("user_stats_failed", 0L)
 						.set("user_first_login", stats.getTimestamp("user_first_login"))
-						.set("user_last_login", Timestamp.now())
-						.build();
+						.set("user_last_login", Timestamp.now()).build();
 
 				// Batch operation
 				txn.put(log, ustats);
@@ -271,13 +241,11 @@ public class LoginResource {
 			} else {
 				// Incorrect password
 				// Copying here is even worse. Propose a better solution!
-				Entity ustats = Entity.newBuilder(ctrsKey)
-						.set("user_stats_logins", stats.getLong("user_stats_logins"))
+				Entity ustats = Entity.newBuilder(ctrsKey).set("user_stats_logins", stats.getLong("user_stats_logins"))
 						.set("user_stats_failed", stats.getLong("user_stats_failed") + 1L)
 						.set("user_first_login", stats.getTimestamp("user_first_login"))
 						.set("user_last_login", stats.getTimestamp("user_last_login"))
-						.set("user_last_attempt", Timestamp.now())
-						.build();
+						.set("user_last_attempt", Timestamp.now()).build();
 
 				txn.put(ustats);
 				txn.commit();
@@ -311,16 +279,11 @@ public class LoginResource {
 			cal.add(Calendar.DATE, -1);
 			Timestamp yesterday = Timestamp.of(cal.getTime());
 
-			Query<Entity> query = Query.newEntityQueryBuilder()
-					.setKind("UserLog")
-					.setFilter(
-							CompositeFilter.and(
-									PropertyFilter.hasAncestor(
-											datastore.newKeyFactory().setKind("User").newKey(data.username)),
-									PropertyFilter.ge(USER_LOGIN_TIME, yesterday)))
-					.setOrderBy(OrderBy.desc(USER_LOGIN_TIME))
-					.setLimit(3)
-					.build();
+			Query<Entity> query = Query.newEntityQueryBuilder().setKind("UserLog")
+					.setFilter(CompositeFilter.and(
+							PropertyFilter.hasAncestor(datastore.newKeyFactory().setKind("User").newKey(data.username)),
+							PropertyFilter.ge(USER_LOGIN_TIME, yesterday)))
+					.setOrderBy(OrderBy.desc(USER_LOGIN_TIME)).setLimit(3).build();
 			QueryResults<Entity> logs = datastore.run(query);
 
 			List<Date> loginDates = new ArrayList<Date>();
@@ -330,8 +293,7 @@ public class LoginResource {
 
 			return Response.ok(g.toJson(loginDates)).build();
 		}
-		return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_CREDENTIALS)
-				.build();
+		return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_CREDENTIALS).build();
 	}
 
 	@POST
@@ -361,17 +323,11 @@ public class LoginResource {
 			cal.add(Calendar.DATE, -1);
 			Timestamp yesterday = Timestamp.of(cal.getTime());
 
-			Query<Entity> query = Query.newEntityQueryBuilder()
-					.setKind("UserLog")
-					.setFilter(
-							CompositeFilter.and(
-									PropertyFilter.hasAncestor(
-											datastore.newKeyFactory().setKind("User").newKey(data.username)),
-									PropertyFilter.ge(USER_LOGIN_TIME, yesterday)))
-					.setOrderBy(OrderBy.desc(USER_LOGIN_TIME))
-					.setLimit(3)
-					.setOffset(next)
-					.build();
+			Query<Entity> query = Query.newEntityQueryBuilder().setKind("UserLog")
+					.setFilter(CompositeFilter.and(
+							PropertyFilter.hasAncestor(datastore.newKeyFactory().setKind("User").newKey(data.username)),
+							PropertyFilter.ge(USER_LOGIN_TIME, yesterday)))
+					.setOrderBy(OrderBy.desc(USER_LOGIN_TIME)).setLimit(3).setOffset(next).build();
 			QueryResults<Entity> logs = datastore.run(query);
 
 			List<Date> loginDates = new ArrayList<Date>();
@@ -381,8 +337,7 @@ public class LoginResource {
 
 			return Response.ok(g.toJson(loginDates)).build();
 		}
-		return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_CREDENTIALS)
-				.build();
+		return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_CREDENTIALS).build();
 	}
 
 }

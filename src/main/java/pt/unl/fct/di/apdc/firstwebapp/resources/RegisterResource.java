@@ -1,11 +1,9 @@
 package pt.unl.fct.di.apdc.firstwebapp.resources;
 
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.apache.commons.codec.digest.DigestUtils;
 
-import com.google.cloud.Timestamp;
 import com.google.cloud.datastore.Datastore;
 import com.google.cloud.datastore.DatastoreException;
 import com.google.cloud.datastore.DatastoreOptions;
@@ -20,136 +18,92 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Response.Status;
-import pt.unl.fct.di.apdc.firstwebapp.util.LoginData;
 import pt.unl.fct.di.apdc.firstwebapp.util.RegisterData;
 
 @Path("/register")
 public class RegisterResource {
+
+	private static final String MESSAGE_INVALID_REGISTRATION = "Missing or invalid required fields.";
+	private static final String MESSAGE_USER_ALREADY_REGISTRED = "User already exists.";
+
+	private static final String LOG_MESSAGE_REGISTER_ATTEMPT = "Register attempt by user: ";
+	private static final String LOG_MESSAGE_REGISTER_SUCCESSFUL = "Register successful by user: ";
+
+	private static final String USER_EMAIL = "user_email";
+	private static final String USER_PWD = "user_pwd";
+	private static final String USER_NAME = "user_name";
+	private static final String USER_PHONE = "user_phone";
+	private static final String USER_PRIVACY = "user_privacy";
+	private static final String USER_ROLE = "user_role";
+	private static final String USER_ACCOUNT_STATE = "user_account_state";
+	
+	private static final String REGISTER_ROLE = "enduser";
+	private static final String REGISTER_STATE = "DESATIVADA";
+
+	private static final String USER_CITIZEN_CARD = "user_citizen_card";
+	private static final String USER_NIF = "user_nif";
+	private static final String USER_EMPLOYER = "user_employer";
+	private static final String USER_FUNCTION = "user_function";
+	private static final String USER_ADDRESS = "user_address";
+	private static final String USER_EMPLOYER_NIF = "user_employer_nif";
 
 	private static final Logger LOG = Logger.getLogger(RegisterResource.class.getName());
 	private static final Datastore datastore = DatastoreOptions.getDefaultInstance().getService();
 
 	private final Gson g = new Gson();
 
+	public RegisterResource() {
+	} 
 
-	public RegisterResource() {}	// Default constructor, nothing to do
-	
 	@POST
-	@Path("/v1")
+	@Path("/")
 	@Consumes(MediaType.APPLICATION_JSON)
-	public Response registerUserV1(LoginData data) {
-		LOG.fine("Attempt to register user: " + data.username);
-	
-		Key userKey = datastore.newKeyFactory().setKind("User").newKey(data.username);
-		Entity user = Entity.newBuilder(userKey)
-						.set("user_pwd", DigestUtils.sha512Hex(data.password))
-						.set("user_creation_time", Timestamp.now())
-						.build();
-		datastore.put(user);
-		LOG.info("User registered " + data.username);
-		return Response.ok().entity(g.toJson(true)).build();
-	}
-	
-	@POST
-	@Path("/v2")
-	@Consumes(MediaType.APPLICATION_JSON)
-	public Response registerUserV2(RegisterData data) {
-		LOG.fine("Attempt to register user: " + data.username);
-
-		if(!data.validRegistration())
-			return Response.status(Status.BAD_REQUEST).entity("Missing or wrong parameter.").build();
-					
-		Key userKey = datastore.newKeyFactory().setKind("User").newKey(data.username);
-		Entity user = datastore.get(userKey);
-		
-		if(user != null)
-			return Response.status(Status.BAD_REQUEST).entity("User already exists.").build();
-		
-		user = Entity.newBuilder(userKey)
-				.set("user_name", data.name)
-				.set("user_pwd", DigestUtils.sha512Hex(data.password))
-				.set("user_email", data.email)
-				.set("user_creation_time", Timestamp.now())
-				.build();
-
-		// Concurrency problem...
-		// When we reach here, another client might have put() an entity with the same key...
-		
-		datastore.put(user);
-		LOG.info("User registered " + data.username);
-		
-		
-		return Response.ok().build();
-	}
-	
-	@POST
-	@Path("/v3")
-	@Consumes(MediaType.APPLICATION_JSON)
-	public Response registerUserV3(RegisterData data) {
-		LOG.fine("Attempt to register user: " + data.username);
+	public Response registerUser(RegisterData data) {
+		LOG.fine(LOG_MESSAGE_REGISTER_ATTEMPT + data.username);
 
 		if (!data.validRegistration()) {
-			return Response.status(Status.BAD_REQUEST).entity("Missing or wrong parameter.").build();
+			return Response.status(Status.BAD_REQUEST).entity(MESSAGE_INVALID_REGISTRATION).build();
 		}
 
 		Transaction txn = datastore.newTransaction();
 		try {
 			Key userKey = datastore.newKeyFactory().setKind("User").newKey(data.username);
 			Entity user = txn.get(userKey);
-			
-			// If the entity does not exist null is returned...
+
 			if (user != null) {
 				txn.rollback();
-				return Response.status(Status.CONFLICT).entity("User already exists.").build();
-			} else {
-				 // ... otherwise
-				user = Entity.newBuilder(userKey).set("user_name", data.name)
-						.set("user_pwd", DigestUtils.sha512Hex(data.password)).set("user_email", data.email)
-						.set("user_creation_time", Timestamp.now()).build();
-				// get() followed by put() inside a transaction is ok...
-				txn.put(user);
-				txn.commit();
-				LOG.info("User registered " + data.username);
-				return Response.ok().build();
+				return Response.status(Status.CONFLICT).entity(MESSAGE_USER_ALREADY_REGISTRED).build();
 			}
-		}
-		catch (DatastoreException e) {
+
+			Entity.Builder userBuilder = Entity.newBuilder(userKey).set(USER_NAME, data.name)
+					.set(USER_EMAIL, data.email).set(USER_PHONE, data.telephone)
+					.set(USER_PWD, DigestUtils.sha512Hex(data.password)).set(USER_PRIVACY, data.privacy)
+					.set(USER_ROLE, REGISTER_ROLE).set(USER_ACCOUNT_STATE, REGISTER_STATE);
+
+			if (data.citizenCard != null)
+				userBuilder.set(USER_CITIZEN_CARD, data.citizenCard);
+			if (data.nif != null)
+				userBuilder.set(USER_NIF, data.nif);
+			if (data.employer != null)
+				userBuilder.set(USER_EMPLOYER, data.employer);
+			if (data.function != null)
+				userBuilder.set(USER_FUNCTION, data.function);
+			if (data.address != null)
+				userBuilder.set(USER_ADDRESS, data.address);
+			if (data.employerNIF != null)
+				userBuilder.set(USER_EMPLOYER_NIF, data.employerNIF);
+
+			user = userBuilder.build();
+			txn.put(user);
+			txn.commit();
+			LOG.info(LOG_MESSAGE_REGISTER_SUCCESSFUL + data.username);
+			return Response.ok(g.toJson(true)).build();
+		} catch (DatastoreException e) {
 			return Response.status(Status.INTERNAL_SERVER_ERROR).entity(e.toString()).build();
 		} finally {
 			if (txn.isActive()) {
 				txn.rollback();
 			}
-		}
-	}	
-
-	@POST
-	@Path("/v4")
-	@Consumes(MediaType.APPLICATION_JSON)
-	public Response registerUserV4(RegisterData data) {
-		LOG.fine("Attempt to register user: " + data.username);
-		
-		if(!data.validRegistration())
-			return Response.status(Status.BAD_REQUEST).entity("Missing or wrong parameter.").build();
-		
-		
-		try {
-			Key userKey = datastore.newKeyFactory().setKind("User").newKey(data.username);
-			
-			Entity user = Entity.newBuilder(userKey)
-					.set("user_name", data.name)
-					.set("user_pwd", DigestUtils.sha512Hex(data.password))
-					.set("user_email", data.email)
-					.set("user_creation_time", Timestamp.now())
-					.build();
-
-			datastore.add(user);
-			LOG.info("User registered " + data.username);
-			
-			return Response.ok().build();
-		}
-		catch(DatastoreException e) {
-			LOG.log(Level.ALL, e.toString());
-			return Response.status(Status.BAD_REQUEST).entity(e.getReason()).build();
 		}
 	}
 }
