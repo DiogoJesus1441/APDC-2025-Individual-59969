@@ -29,6 +29,14 @@ public class AppStartupListener implements ServletContextListener {
 	private static final String USER_PRIVACY = "user_privacy";
 	private static final String USER_ROLE = "user_role";
 	private static final String USER_ACCOUNT_STATE = "user_account_state";
+	
+	private static final String ROOT_EMAIL = "root@example.com";
+	private static final String ROOT_PWD = "default_password";
+	private static final String ROOT_NAME = "Administrador";
+	private static final String ROOT_PHONE = "000000000";
+	private static final String ROOT_PRIVACY = "privada";
+	private static final String ROOT_ROLE = "ADMIN";
+	private static final String ROOT_ACCOUNT_STATE = "ATIVADA";
 
 	private static final Logger LOG = Logger.getLogger(RegisterResource.class.getName());
 
@@ -43,10 +51,10 @@ public class AppStartupListener implements ServletContextListener {
 			LOG.info(ROOT_ALREADY_EXISTS);
 		} else {
 			try {
-				rootUser = Entity.newBuilder(userKey).set(USER_NAME, "Administrador")
-						.set(USER_EMAIL, "root@example.com").set(USER_PHONE, "000000000")
-						.set(USER_PWD, DigestUtils.sha512Hex("default_password")).set(USER_PRIVACY, "privada")
-						.set(USER_ROLE, "ADMIN").set(USER_ACCOUNT_STATE, "ATIVADA").build();
+				rootUser = Entity.newBuilder(userKey).set(USER_NAME, ROOT_NAME)
+						.set(USER_EMAIL, ROOT_EMAIL).set(USER_PHONE, ROOT_PHONE)
+						.set(USER_PWD, DigestUtils.sha512Hex(ROOT_PWD)).set(USER_PRIVACY, ROOT_PRIVACY)
+						.set(USER_ROLE, ROOT_ROLE).set(USER_ACCOUNT_STATE, ROOT_ACCOUNT_STATE).build();
 				txn.put(rootUser);
 				txn.commit();
 				LOG.info(ROOT_CREATED);
