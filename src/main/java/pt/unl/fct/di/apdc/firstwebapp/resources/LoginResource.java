@@ -28,7 +28,6 @@ import pt.unl.fct.di.apdc.firstwebapp.util.LoginData;
 import pt.unl.fct.di.apdc.firstwebapp.util.LogoutData;
 
 @Path("/login")
-@Produces(MediaType.APPLICATION_JSON + ";charset=utf-8")
 public class LoginResource {
 
 	private static final String MESSAGE_INVALID_CREDENTIALS = "Incorrect username or password.";
