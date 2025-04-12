@@ -3,6 +3,8 @@ package pt.unl.fct.di.apdc.firstwebapp.resources;
 import java.util.Date;
 import java.util.logging.Logger;
 
+import org.apache.commons.codec.digest.DigestUtils;
+
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.POST;
@@ -11,6 +13,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Response.Status;
 import pt.unl.fct.di.apdc.firstwebapp.util.ChangeAttributeData;
+import pt.unl.fct.di.apdc.firstwebapp.util.ChangePasswordData;
 import pt.unl.fct.di.apdc.firstwebapp.util.ChangeRoleData;
 import pt.unl.fct.di.apdc.firstwebapp.util.ChangeStateData;
 import pt.unl.fct.di.apdc.firstwebapp.util.RemoveUserData;
@@ -37,7 +40,9 @@ public class ComputationResource {
 	private static final String MESSAGE_INVALID_PERMISSION = "Permission denied.";
 	private static final String MESSAGE_INVALID_ATTRIBUTE = "You are not allowed to modify the attribute: ";
 	private static final String MESSAGE_ACCOUNT_NOT_ACTIVE = "You must have your account activated to perform this action.";
-
+	private static final String MESSAGE_INVALID_NEW_PASSWORD = "The password change attempt is invalid.";
+	private static final String MESSAGE_WRONG_PASSWORD = "Wrong password, please try again.";
+	
 	private static final String LOG_MESSAGE_CHANGE_ROLE_ATTEMPT = "Change role attempt by user: ";
 	private static final String LOG_MESSAGE_NONEXISTING_USER = "Either the user, or the target dont exist in the data base.";
 	private static final String LOG_MESSAGE_NONEXISTING_VALID_TOKEN = "No valid token found for: ";
@@ -48,7 +53,10 @@ public class ComputationResource {
 	private static final String LOG_MESSAGE_REMOVE_USER_ATTEMPT = "Remove user attempt by user: ";
 	private static final String LOG_MESSAGE_CHANGE_ATTRIBUTE_ATTEMPT = "Attribute change attempted by user: ";
 	private static final String LOG_MESSAGE_CHANGE_ATTRIBUTE_SUCCESSFUL = "The attribute change attempt was successful by: ";
-
+	private static final String LOG_MESSAGE_CHANGE_PASSWORD_SUCCESSFUL = "Password changed successfuly for: ";
+	private static final String LOG_MESSAGE_CHANGE_PASSWORD_INVALID = "Password change request invalid by: ";
+	private static final String LOG_MESSAGE_WRONG_PASSWORD = "Wrong password in password change attempt by: ";
+	
 	private static final Logger LOG = Logger.getLogger(ComputationResource.class.getName());
 	private static final Datastore datastore = DatastoreOptions.getDefaultInstance().getService();
 	private static final KeyFactory userKeyFactory = datastore.newKeyFactory().setKind("User");
@@ -62,7 +70,7 @@ public class ComputationResource {
 	@Path("/changerole")
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Produces(MediaType.APPLICATION_JSON)
-	public Response ChangeUserRole(ChangeRoleData data) {
+	public Response changeUserRole(ChangeRoleData data) {
 		LOG.fine(LOG_MESSAGE_CHANGE_ROLE_ATTEMPT + data.username);
 
 		Transaction txn = datastore.newTransaction();
@@ -231,14 +239,15 @@ public class ComputationResource {
 				return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_USER).build();
 			}
 
-			Query<Entity> tokenQuery = Query.newEntityQueryBuilder().setKind("AuthToken")
+			Query<Entity> query = Query.newEntityQueryBuilder().setKind("AuthToken")
 					.setFilter(StructuredQuery.PropertyFilter.eq("token_user", data.username)).build();
-			QueryResults<Entity> tokens = datastore.run(tokenQuery);
+			QueryResults<Entity> tokens = datastore.run(query);
 
 			Entity tokenEntity = null;
 			while (tokens.hasNext()) {
 				Entity t = tokens.next();
 				Timestamp validTo = t.getTimestamp("token_expiration");
+
 				if (validTo != null && validTo.toDate().after(new Date())) {
 					tokenEntity = t;
 					break;
@@ -246,7 +255,7 @@ public class ComputationResource {
 			}
 
 			if (tokenEntity == null) {
-				LOG.warning("No valid token found for: " + data.username);
+				LOG.warning(LOG_MESSAGE_NONEXISTING_VALID_TOKEN + data.username);
 				return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_TOKEN).build();
 			}
 
@@ -305,6 +314,26 @@ public class ComputationResource {
 				LOG.warning(LOG_MESSAGE_NONEXISTING_USER);
 				return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_USER).build();
 			}
+			
+			Query<Entity> query = Query.newEntityQueryBuilder().setKind("AuthToken")
+					.setFilter(StructuredQuery.PropertyFilter.eq("token_user", data.username)).build();
+			QueryResults<Entity> tokens = datastore.run(query);
+
+			Entity tokenEntity = null;
+			while (tokens.hasNext()) {
+				Entity t = tokens.next();
+				Timestamp validTo = t.getTimestamp("token_expiration");
+
+				if (validTo != null && validTo.toDate().after(new Date())) {
+					tokenEntity = t;
+					break;
+				}
+			}
+
+			if (tokenEntity == null) {
+				LOG.warning(LOG_MESSAGE_NONEXISTING_VALID_TOKEN + data.username);
+				return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_TOKEN).build();
+			}
 
 			String requesterRole = requester.getString("user_role");
 			String targetRole = target.getString("user_role");
@@ -354,6 +383,66 @@ public class ComputationResource {
 			LOG.info(LOG_MESSAGE_CHANGE_ATTRIBUTE_SUCCESSFUL + data.username);
 			return Response.ok(g.toJson(true)).build();
 		} catch (DatastoreException e) {
+			return Response.status(Status.INTERNAL_SERVER_ERROR).entity(e.toString()).build();
+		} finally {
+			if (txn.isActive()) {
+				txn.rollback();
+			}
+		}
+	}
+	
+	@POST
+	@Path("/changepassword")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response changePassword(ChangePasswordData data) {
+		LOG.fine(LOG_MESSAGE_CHANGE_ATTRIBUTE_ATTEMPT + data.username);
+		Transaction txn = datastore.newTransaction();
+		try {
+			Key userKey = userKeyFactory.newKey(data.username);
+			Entity user = txn.get(userKey);
+			if(user == null) {
+				LOG.warning(LOG_MESSAGE_NONEXISTING_USER);
+				return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_USER).build();
+			}
+			
+			Query<Entity> query = Query.newEntityQueryBuilder().setKind("AuthToken")
+					.setFilter(StructuredQuery.PropertyFilter.eq("token_user", data.username)).build();
+			QueryResults<Entity> tokens = datastore.run(query);
+
+			Entity tokenEntity = null;
+			while (tokens.hasNext()) {
+				Entity t = tokens.next();
+				Timestamp validTo = t.getTimestamp("token_expiration");
+
+				if (validTo != null && validTo.toDate().after(new Date())) {
+					tokenEntity = t;
+					break;
+				}
+			}
+
+			if (tokenEntity == null) {
+				LOG.warning(LOG_MESSAGE_NONEXISTING_VALID_TOKEN + data.username);
+				return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_TOKEN).build();
+			}
+			
+			if(!data.isValidRequest()) {
+				LOG.warning(LOG_MESSAGE_CHANGE_PASSWORD_INVALID + data.username);
+				return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_NEW_PASSWORD).build(); 
+			}
+			String hashedStoredPassword = user.getString("user_pwd");
+			if (!hashedStoredPassword.equals(DigestUtils.sha512Hex(data.oldPassword))) {
+				LOG.warning(LOG_MESSAGE_WRONG_PASSWORD + data.username);
+				return Response.status(Status.FORBIDDEN).entity(MESSAGE_WRONG_PASSWORD).build();
+			}
+			Entity.Builder builder = Entity.newBuilder(user);
+			builder.set("user_pwd", DigestUtils.sha512Hex(data.newPassword));
+			Entity updatedTarget = builder.build();
+			txn.put(updatedTarget);
+			txn.commit();
+			LOG.info(LOG_MESSAGE_CHANGE_PASSWORD_SUCCESSFUL + data.username);
+			return Response.ok(g.toJson(true)).build();
+		}catch (DatastoreException e) {
 			return Response.status(Status.INTERNAL_SERVER_ERROR).entity(e.toString()).build();
 		} finally {
 			if (txn.isActive()) {
