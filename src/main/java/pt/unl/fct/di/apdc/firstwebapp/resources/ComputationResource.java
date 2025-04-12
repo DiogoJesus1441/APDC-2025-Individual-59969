@@ -10,7 +10,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Response.Status;
-
+import pt.unl.fct.di.apdc.firstwebapp.util.ChangeAttributeData;
 import pt.unl.fct.di.apdc.firstwebapp.util.ChangeRoleData;
 import pt.unl.fct.di.apdc.firstwebapp.util.ChangeStateData;
 import pt.unl.fct.di.apdc.firstwebapp.util.RemoveUserData;
@@ -35,6 +35,8 @@ public class ComputationResource {
 	private static final String MESSAGE_INVALID_USER = "Invalid user or target. Please check the usernames inputed.";
 	private static final String MESSAGE_INVALID_TOKEN = "No valid token.";
 	private static final String MESSAGE_INVALID_PERMISSION = "Permission denied.";
+	private static final String MESSAGE_INVALID_ATTRIBUTE = "You are not allowed to modify the attribute: ";
+	private static final String MESSAGE_ACCOUNT_NOT_ACTIVE = "You must have your account activated to perform this action.";
 
 	private static final String LOG_MESSAGE_CHANGE_ROLE_ATTEMPT = "Change role attempt by user: ";
 	private static final String LOG_MESSAGE_NONEXISTING_USER = "Either the user, or the target dont exist in the data base.";
@@ -44,6 +46,8 @@ public class ComputationResource {
 	private static final String LOG_MESSAGE_CHANGE_STATE_ATTEMPT = "Change state attempt by user: ";
 	private static final String LOG_MESSAGE_CHANGE_STATE_SUCCESSFUL = "The state change was successful by: ";
 	private static final String LOG_MESSAGE_REMOVE_USER_ATTEMPT = "Remove user attempt by user: ";
+	private static final String LOG_MESSAGE_CHANGE_ATTRIBUTE_ATTEMPT = "Attribute change attempted by user: ";
+	private static final String LOG_MESSAGE_CHANGE_ATTRIBUTE_SUCCESSFUL = "The attribute change attempt was successful by: ";
 
 	private static final Logger LOG = Logger.getLogger(ComputationResource.class.getName());
 	private static final Datastore datastore = DatastoreOptions.getDefaultInstance().getService();
@@ -280,6 +284,82 @@ public class ComputationResource {
 				txn.rollback();
 			}
 		}
-
 	}
+
+	@POST
+	@Path("/changeattribute")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response changeAccountAttributes(ChangeAttributeData data) {
+		LOG.fine(LOG_MESSAGE_CHANGE_ATTRIBUTE_ATTEMPT + data.username);
+
+		Transaction txn = datastore.newTransaction();
+		try {
+
+			Key requesterKey = userKeyFactory.newKey(data.username);
+			Key targetKey = userKeyFactory.newKey(data.targetUsername);
+			Entity requester = txn.get(requesterKey);
+			Entity target = txn.get(targetKey);
+
+			if (requester == null || target == null) {
+				LOG.warning(LOG_MESSAGE_NONEXISTING_USER);
+				return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_USER).build();
+			}
+
+			String requesterRole = requester.getString("user_role");
+			String targetRole = target.getString("user_role");
+			String requesterState = requester.getString("user_account_state");
+
+			if ((requesterRole.equalsIgnoreCase("ENDUSER") || requesterRole.equalsIgnoreCase("BACKOFFICE"))
+			        && !requesterState.equalsIgnoreCase("ATIVADA")) {
+			    return Response.status(Status.FORBIDDEN).entity(MESSAGE_ACCOUNT_NOT_ACTIVE).build();
+			}
+
+
+			final String[] controlAttributes = { "user_email", "user_name", "user_role", "user_account_state" };
+
+			boolean isSelf = data.username.equals(data.targetUsername);
+
+			if (isSelf && requesterRole.equalsIgnoreCase("ENDUSER")) {
+				for (String restricted : controlAttributes) {
+					if (restricted.equalsIgnoreCase(data.attributeName)) {
+						return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_ATTRIBUTE + data.attributeName)
+								.build();
+					}
+				}
+			}
+			if (!isSelf) {
+				if (requesterRole.equalsIgnoreCase("ENDUSER")) {
+					return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_PERMISSION).build();
+				} else if (requesterRole.equalsIgnoreCase("BACKOFFICE")) {
+					if (data.attributeName.equalsIgnoreCase("user_email")) {
+						return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_PERMISSION).build();
+					}
+					if (!(targetRole.equalsIgnoreCase("ENDUSER") || targetRole.equalsIgnoreCase("PARTNER"))) {
+						return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_PERMISSION).build();
+					}
+				}
+			}
+
+			Entity.Builder builder = Entity.newBuilder(target);
+			String valueToSet = (data.newValue == null || data.newValue.trim().isEmpty()) ? "NOT DEFINED"
+					: data.newValue.trim();
+
+			builder.set(data.attributeName, valueToSet);
+
+			Entity updatedTarget = builder.build();
+			txn.put(updatedTarget);
+			txn.commit();
+
+			LOG.info(LOG_MESSAGE_CHANGE_ATTRIBUTE_SUCCESSFUL + data.username);
+			return Response.ok(g.toJson(true)).build();
+		} catch (DatastoreException e) {
+			return Response.status(Status.INTERNAL_SERVER_ERROR).entity(e.toString()).build();
+		} finally {
+			if (txn.isActive()) {
+				txn.rollback();
+			}
+		}
+	}
+
 }
