@@ -25,17 +25,23 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Response.Status;
 import pt.unl.fct.di.apdc.firstwebapp.util.AuthToken;
 import pt.unl.fct.di.apdc.firstwebapp.util.LoginData;
+import pt.unl.fct.di.apdc.firstwebapp.util.LogoutData;
 
 @Path("/login")
 @Produces(MediaType.APPLICATION_JSON + ";charset=utf-8")
 public class LoginResource {
 
 	private static final String MESSAGE_INVALID_CREDENTIALS = "Incorrect username or password.";
+	private static final String MESSAGE_INVALID_USERNAME = "Incorrect username.";
+	private static final String MESSAGE_NO_ACTIVE_SESSION = "No active session found for user.";
 
-	private static final String LOG_MESSAGE_LOGIN_ATTEMP = "Login attempt by user: ";
+	private static final String LOG_MESSAGE_LOGIN_ATTEMPT = "Login attempt by user: ";
 	private static final String LOG_MESSAGE_LOGIN_SUCCESSFUL = "Login successful by user: ";
 	private static final String LOG_MESSAGE_WRONG_PASSWORD = "Wrong password for: ";
 	private static final String LOG_MESSAGE_UNKNOW_USER = "Failed login attempt for username: ";
+	private static final String LOG_MESSAGE_LOGOUT_ATTEMPT = "Logout attempt by user: ";
+	private static final String LOG_MESSAGE_NO_ACTIVE_SESSION = "No active session found for user: ";
+	private static final String LOG_MESSAGE_LOGOUT_SUCCESSFUL = "Logout successful by user: ";
 
 	private static final String USER_PWD = "user_pwd";
 	private static final String USER_ROLE = "user_role";
@@ -58,7 +64,7 @@ public class LoginResource {
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Produces(MediaType.APPLICATION_JSON)
 	public Response doLogin(LoginData data) {
-		LOG.fine(LOG_MESSAGE_LOGIN_ATTEMP + data.username);
+		LOG.fine(LOG_MESSAGE_LOGIN_ATTEMPT + data.username);
 
 		Key userKey = userKeyFactory.newKey(data.username);
 		Entity user = datastore.get(userKey);
@@ -81,11 +87,11 @@ public class LoginResource {
 		Entity tokenEntity;
 
 		if (tokenResults.hasNext()) {
-			
+
 			Timestamp newValidFrom = Timestamp.now();
 			long newExpirationMillis = newValidFrom.toDate().getTime() + AuthToken.EXPIRATION_TIME;
 			Timestamp newValidTo = Timestamp.of(new Date(newExpirationMillis));
-			
+
 			tokenEntity = tokenResults.next();
 			Key tokenKey = tokenEntity.getKey();
 			token = new AuthToken();
@@ -108,7 +114,48 @@ public class LoginResource {
 
 		LOG.info(LOG_MESSAGE_LOGIN_SUCCESSFUL + data.username);
 
-		URI redirectUri = URI.create("/welcome/welcome.html?user=" + data.username + "&role=" + token.role);
+		URI redirectUri = URI.create("/login/welcome.html?user=" + data.username + "&role=" + token.role);
+		return Response.temporaryRedirect(redirectUri).build();
+	}
+
+	@POST
+	@Path("/logout")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response doLogout(LogoutData data) {
+		LOG.fine(LOG_MESSAGE_LOGOUT_ATTEMPT + data.username);
+
+		Key userKey = userKeyFactory.newKey(data.username);
+		Entity user = datastore.get(userKey);
+		if (user == null) {
+			LOG.warning(LOG_MESSAGE_UNKNOW_USER + data.username);
+			return Response.status(Status.FORBIDDEN).entity(MESSAGE_INVALID_USERNAME).build();
+		}
+
+		Query<Entity> query = Query.newEntityQueryBuilder().setKind("AuthToken")
+				.setFilter(StructuredQuery.PropertyFilter.eq("token_user", data.username)).build();
+		QueryResults<Entity> tokens = datastore.run(query);
+
+		Entity tokenEntity = null;
+		while (tokens.hasNext()) {
+			Entity t = tokens.next();
+			Timestamp validTo = t.getTimestamp("token_expiration");
+
+			if (validTo != null && validTo.toDate().after(new Date())) {
+				tokenEntity = t;
+				break;
+			}
+		}
+
+		if (tokenEntity == null) {
+			LOG.warning(LOG_MESSAGE_NO_ACTIVE_SESSION + data.username);
+			return Response.status(Status.NOT_FOUND).entity(MESSAGE_NO_ACTIVE_SESSION).build();
+		}
+		
+		datastore.delete(tokenEntity.getKey());
+
+		LOG.info(LOG_MESSAGE_LOGOUT_SUCCESSFUL + data.username);
+		URI redirectUri = URI.create("/login/goodbye.html");
 		return Response.temporaryRedirect(redirectUri).build();
 	}
 
